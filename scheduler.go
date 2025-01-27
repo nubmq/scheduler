@@ -75,7 +75,7 @@ func HandleKeyTTLInsertion(setStorage *SetStorage, updateChan *chan time.Duratio
 	}
 }
 
-func HandleKeyTTLEviction(setStorage *SetStorage, updateChan *chan time.Duration, expirationEventChannel *chan main.EventQueue) {
+func HandleKeyTTLEviction(setStorage *SetStorage, updateChan *chan time.Duration, expirationEventChannel *chan main.Entry) {
 	defaultPollingTime := time.Duration(1 * time.Hour)
 	timer := time.NewTimer(defaultPollingTime)
 
@@ -118,7 +118,7 @@ func HandleKeyTTLEviction(setStorage *SetStorage, updateChan *chan time.Duration
 
 // func InitScheduler() {
 // 	go HandleKeyTTLInsertion(&SetContainer, &updateChan)
-// 	go HandleKeyTTLEviction(&SetContainer, &updateChan)
+//  go HandleKeyTTLEviction(&SetContainer, &updateChan)
 
 // 	// NOTE: only insert in queue if canExpire is true in entry
 // }
