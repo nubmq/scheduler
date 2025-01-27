@@ -32,7 +32,7 @@ var SetContainer SetStorage = SetStorage{
 	KeyEntryKeeper: make(map[string]main.Entry),
 }
 
-var updateChan chan time.Duration = make(chan time.Duration)
+var UpdateChan chan time.Duration = make(chan time.Duration)
 
 func GetSet() *set.Set {
 	return set.NewSet(func(a, b interface{}) int {
