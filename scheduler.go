@@ -1,6 +1,7 @@
-package main
+package scheduler
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -17,25 +18,24 @@ set.Begin(), to get the actual entry of out it: entry := (set.Begin()).Value().(
 set.RBegin()
 */
 
-type Entry struct {
-	key       string
-	value     string
-	canExpire bool
-	TTL       int64
-}
-
 type SetStorage struct {
-	queue                    chan Entry
+	queue                    chan main.Entry
 	set                      set.Set
 	mutex                    sync.Mutex
-	KeyEntryKeeper           map[string]Entry
-	EarliestExpiringKeyEntry Entry
+	KeyEntryKeeper           map[string]main.Entry
+	EarliestExpiringKeyEntry main.Entry
 }
 
-func getSet() *set.Set {
+var SetContainer SetStorage = SetStorage{
+	queue:          make(chan main.Entry, 1000), // this shit can get clogged and might
+	set:            *getSet(),
+	KeyEntryKeeper: make(map[string]main.Entry),
+}
+
+func GetSet() *set.Set {
 	return set.NewSet(func(a, b interface{}) int {
-		entryA := a.(Entry)
-		entryB := b.(Entry)
+		entryA := a.(main.Entry)
+		entryB := b.(main.Entry)
 		if entryA.TTL < entryB.TTL {
 			return -1
 		} else if entryA.TTL > entryB.TTL {
@@ -46,27 +46,25 @@ func getSet() *set.Set {
 }
 
 // inserts stuff in setStorage
-func HandleKeyTTLInsertion(setStorage SetStorage) {
+func HandleKeyTTLInsertion(setStorage *SetStorage, updateChan *chan time.Duration) {
 	for {
 		entry := <-setStorage.queue
 
 		setStorage.mutex.Lock()
-		// check if already exists in setStorage
 
 		val, exists := setStorage.KeyEntryKeeper[entry.key]
 		if exists {
 			if setStorage.EarliestExpiringKeyEntry == val {
 				if setStorage.set.Size() > 0 {
-					setStorage.EarliestExpiringKeyEntry = (setStorage.set.Begin()).Value().(Entry)
+					setStorage.EarliestExpiringKeyEntry = (setStorage.set.Begin()).Value().(main.Entry)
 
-				} else {
-					// make it null I guess
 				}
 			}
 			setStorage.set.Remove(val)
 		}
 		if setStorage.set.Size() == 0 || setStorage.EarliestExpiringKeyEntry.TTL > entry.TTL {
 			setStorage.EarliestExpiringKeyEntry = entry
+			*updateChan <- time.Duration(entry.TTL-time.Now().Unix()) * time.Second
 		}
 		setStorage.KeyEntryKeeper[entry.key] = entry
 		setStorage.set.Insert(entry)
@@ -75,32 +73,39 @@ func HandleKeyTTLInsertion(setStorage SetStorage) {
 	}
 }
 
-// sleeps until it gets called
-func HandleKeyTTLEviction(setStorage SetStorage, updateChan chan time.Duration) {
-	timer := time.NewTimer(time.Duration(1 * time.Hour))
+func HandleKeyTTLEviction(setStorage *SetStorage, updateChan *chan time.Duration, expirationEventChannel *chan main.EventQueue) {
+	defaultPollingTime := time.Duration(1 * time.Hour)
+	timer := time.NewTimer(defaultPollingTime)
 
 	for {
 		select {
 		case <-timer.C:
-			// start the cleanup
 			setStorage.mutex.Lock()
 			if setStorage.set.Size() > 0 {
+				log.Print("in")
 				for it := setStorage.set.Begin(); setStorage.set.Size() > 0; {
-					entry := it.Value().(Entry)
+					log.Print("pura in")
+					entry := it.Value().(main.Entry)
+					log.Print("got some entry: ", entry.key)
 					curTTL := entry.TTL
 					now := time.Now().Unix()
 					if curTTL <= now {
 						setStorage.set.Remove(entry)
-						// TODO: send an expiry event out for this key
+						log.Print("Key expired: ", entry.key)
+						entry.isExpiryEvent = true
+						*expirationEventChannel <- entry
 					} else {
+						log.Print("bad boi")
 						duration := time.Duration(curTTL-now) * time.Second
 						timer.Reset(duration)
 						break
 					}
 				}
+			} else {
+				timer.Reset(defaultPollingTime)
 			}
 			setStorage.mutex.Unlock()
-		case newDuration := <-updateChan:
+		case newDuration := <-*updateChan:
 			if !timer.Stop() {
 				<-timer.C
 			}
@@ -109,17 +114,10 @@ func HandleKeyTTLEviction(setStorage SetStorage, updateChan chan time.Duration) 
 	}
 }
 
-func startStuff() {
-	setContainer := SetStorage{
-		queue:          make(chan Entry),
-		set:            *getSet(),
-		KeyEntryKeeper: make(map[string]Entry),
-	}
+func InitScheduler() {
 	updateChan := make(chan time.Duration)
-	go HandleKeyTTLInsertion(setContainer)
-	go HandleKeyTTLEviction(setContainer, updateChan)
-}
+	go HandleKeyTTLInsertion(&SetContainer, &updateChan)
+	go HandleKeyTTLEviction(&SetContainer, &updateChan)
 
-func main() {
-	startStuff()
+	// NOTE: only insert in queue if canExpire is true in entry
 }
