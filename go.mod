@@ -1,4 +1,4 @@
-module scheduler
+module github.com/nubmq/scheduler
 
 go 1.23.4
 

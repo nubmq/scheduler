@@ -32,6 +32,8 @@ var SetContainer SetStorage = SetStorage{
 	KeyEntryKeeper: make(map[string]main.Entry),
 }
 
+var updateChan chan time.Duration = make(chan time.Duration)
+
 func GetSet() *set.Set {
 	return set.NewSet(func(a, b interface{}) int {
 		entryA := a.(main.Entry)
@@ -114,10 +116,9 @@ func HandleKeyTTLEviction(setStorage *SetStorage, updateChan *chan time.Duration
 	}
 }
 
-func InitScheduler() {
-	updateChan := make(chan time.Duration)
-	go HandleKeyTTLInsertion(&SetContainer, &updateChan)
-	go HandleKeyTTLEviction(&SetContainer, &updateChan)
+// func InitScheduler() {
+// 	go HandleKeyTTLInsertion(&SetContainer, &updateChan)
+// 	go HandleKeyTTLEviction(&SetContainer, &updateChan)
 
-	// NOTE: only insert in queue if canExpire is true in entry
-}
+// 	// NOTE: only insert in queue if canExpire is true in entry
+// }
